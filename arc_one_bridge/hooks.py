@@ -213,3 +213,28 @@ app_license = "MIT"
 # auth_hooks = [
 # 	"arc_one_bridge.auth.validate"
 # ]
+
+# ------------------------------------------------------------------------------
+# Arc-One change feed
+# ------------------------------------------------------------------------------
+# A wildcard hook, filtered at runtime against the DocTypes listed in "Arc One
+# Sync Settings". Wildcard rather than an explicit map so that replicating a new
+# DocType is an admin action, not a code change and a deploy.
+#
+# The handlers are thin and never raise - see arc_one_bridge/events/change_recorder.py.
+
+doc_events = {
+	"*": {
+		"after_insert": "arc_one_bridge.events.change_recorder.on_insert",
+		"on_update": "arc_one_bridge.events.change_recorder.on_update",
+		"on_submit": "arc_one_bridge.events.change_recorder.on_submit",
+		"on_cancel": "arc_one_bridge.events.change_recorder.on_cancel",
+		"on_trash": "arc_one_bridge.events.change_recorder.on_trash",
+	}
+}
+
+scheduler_events = {
+	"daily": [
+		"arc_one_bridge.arc_one_bridge.doctype.arc_one_change_log.arc_one_change_log.prune_change_log",
+	]
+}

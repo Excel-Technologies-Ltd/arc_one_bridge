@@ -1,0 +1,62 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-09-17 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "retention_days",
+  "section_tracked",
+  "tracked_doctypes"
+ ],
+ "fields": [
+  {
+   "default": "1",
+   "description": "Turn off to stop recording changes. The feed keeps serving what is already recorded.",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Record Changes"
+  },
+  {
+   "default": "30",
+   "description": "Delete change log rows older than this. Keep comfortably longer than the longest expected consumer outage - a consumer offline for longer must be re-seeded with a full sync.",
+   "fieldname": "retention_days",
+   "fieldtype": "Int",
+   "label": "Change Log Retention (days)"
+  },
+  {
+   "fieldname": "section_tracked",
+   "fieldtype": "Section Break",
+   "label": "Replicated DocTypes"
+  },
+  {
+   "description": "Only these DocTypes are recorded. Adding one does not backfill - run a full sync from Arc-One after adding.",
+   "fieldname": "tracked_doctypes",
+   "fieldtype": "Table",
+   "label": "Tracked DocTypes",
+   "options": "Arc One Tracked DocType"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-09-17 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Arc One Bridge",
+ "name": "Arc One Sync Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
