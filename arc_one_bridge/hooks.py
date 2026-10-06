@@ -230,8 +230,12 @@ doc_events = {
 		"on_submit": "arc_one_bridge.events.change_recorder.on_submit",
 		"on_cancel": "arc_one_bridge.events.change_recorder.on_cancel",
 		"on_trash": "arc_one_bridge.events.change_recorder.on_trash",
+		"after_rename": "arc_one_bridge.events.change_recorder.on_rename",
 	}
 }
+
+after_install = "arc_one_bridge.install.after_install"
+after_migrate = "arc_one_bridge.install.after_migrate"
 
 scheduler_events = {
 	"daily": [

@@ -14,6 +14,10 @@ class ArcOneSyncSettings(Document):
 		# edit would appear to do nothing.
 		clear_tracked_cache()
 
+		from arc_one_bridge.install import ensure_sync_access
+
+		ensure_sync_access()
+
 
 def get_tracked_doctypes() -> frozenset:
 	"""DocTypes currently being recorded.

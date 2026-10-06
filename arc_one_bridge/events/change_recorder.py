@@ -87,3 +87,23 @@ def on_trash(doc, method=None):
 	# the document is gone there is nothing left to read. This is the main reason a
 	# plain /api/resource poll cannot replace this feed.
 	_record(doc, "trash")
+
+
+def on_rename(doc, method=None, old=None, new=None, merge=False):
+	# A rename rewrites `name` with SQL and fires no on_update, so without this the
+	# replica keeps the old name forever. Recorded as the old name going away and
+	# the new one appearing; with `merge` the old document is gone the same way.
+	try:
+		doctype = getattr(doc, "doctype", None)
+		if not doctype or doctype in OWN_DOCTYPES or not is_tracked(doctype):
+			return
+
+		if old:
+			ArcOneChangeLog.record(doctype, str(old), "trash")
+		ArcOneChangeLog.record(doctype, str(new or doc.name), "update")
+
+	except Exception:
+		frappe.log_error(
+			title="Arc One Bridge: failed to record rename",
+			message=frappe.get_traceback(),
+		)

@@ -8,6 +8,7 @@
  "field_order": [
   "enabled",
   "retention_days",
+  "settle_seconds",
   "section_tracked",
   "tracked_doctypes"
  ],
@@ -25,6 +26,14 @@
    "fieldname": "retention_days",
    "fieldtype": "Int",
    "label": "Change Log Retention (days)"
+  },
+  {
+   "default": "5",
+   "description": "The feed withholds rows younger than this, so a row whose transaction commits a moment after a higher-numbered one is never skipped. 0 disables the delay.",
+   "fieldname": "settle_seconds",
+   "fieldtype": "Int",
+   "label": "Settle Window (seconds)",
+   "non_negative": 1
   },
   {
    "fieldname": "section_tracked",

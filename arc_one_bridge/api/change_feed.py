@@ -12,12 +12,17 @@ poll simply catches up, and the same holds if this site was the one offline.
 
 import frappe
 from frappe.query_builder.functions import Count, Max
+from frappe.utils import add_to_date, cint, now_datetime
 
 from arc_one_bridge.utils.permissions import require_sync_role
 
 CHANGE_LOG = "Arc One Change Log"
 DEFAULT_LIMIT = 500
 MAX_LIMIT = 2000
+
+
+def _settle_seconds() -> int:
+	return max(cint(frappe.db.get_single_value("Arc One Sync Settings", "settle_seconds")), 0)
 
 
 def _parse_doctypes(doctypes) -> list:
@@ -44,7 +49,8 @@ def changes(after=0, limit=DEFAULT_LIMIT, doctypes=None) -> dict:
 
 	Returns:
 	    cursor:   highest name in this page - pass as `after` next time. Unchanged
-	              from the request when there is nothing new.
+	              from the request when there is nothing new. Rows younger than
+	              the settle window are withheld until a later call.
 	    has_more: whether a further page is immediately available.
 	    changes:  [{name, ref_doctype, ref_name, event, creation}] ascending.
 
@@ -61,6 +67,10 @@ def changes(after=0, limit=DEFAULT_LIMIT, doctypes=None) -> dict:
 	selected = _parse_doctypes(doctypes)
 	if selected:
 		filters["ref_doctype"] = ("in", selected)
+
+	settle = _settle_seconds()
+	if settle:
+		filters["creation"] = ("<", add_to_date(now_datetime(), seconds=-settle))
 
 	rows = frappe.get_all(
 		CHANGE_LOG,
