@@ -50,13 +50,30 @@ def _resolve_target(doc) -> tuple:
 	return doctype, getattr(doc, "name", None)
 
 
+def _derived_targets(doc) -> list:
+	"""Documents ERPNext changes as a side effect, with writes that fire no doc_events.
+
+	Bin quantities are updated with `db_set`/`frappe.db.set_value` after each Stock
+	Ledger Entry, so the Bin itself never reaches `_record`. The entry does, through
+	insert and submit, and names the Bin it is about to move. A Bin that does not
+	exist yet is created right after the entry with a normal insert, which records
+	itself.
+	"""
+	if getattr(doc, "doctype", None) == "Stock Ledger Entry" and is_tracked("Bin"):
+		bin_name = frappe.db.get_value("Bin", {"item_code": doc.item_code, "warehouse": doc.warehouse})
+		if bin_name:
+			return [("Bin", bin_name)]
+	return []
+
+
 def _record(doc, event: str) -> None:
 	try:
 		doctype, name = _resolve_target(doc)
-		if not doctype or not name or not is_tracked(doctype):
-			return
+		if doctype and name and is_tracked(doctype):
+			ArcOneChangeLog.record(doctype, str(name), event)
 
-		ArcOneChangeLog.record(doctype, str(name), event)
+		for target_doctype, target_name in _derived_targets(doc):
+			ArcOneChangeLog.record(target_doctype, str(target_name), "update")
 
 	except Exception:
 		# Swallowed deliberately - see the module docstring.

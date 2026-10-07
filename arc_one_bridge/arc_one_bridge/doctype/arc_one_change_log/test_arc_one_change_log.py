@@ -6,6 +6,7 @@ from frappe.model.rename_doc import rename_doc
 from frappe.tests.utils import FrappeTestCase
 
 from arc_one_bridge.api.change_feed import changes
+from arc_one_bridge.events.change_recorder import _derived_targets
 from arc_one_bridge.install import ensure_sync_access
 from arc_one_bridge.utils.permissions import SYNC_ROLE
 
@@ -137,6 +138,30 @@ class TestArcOneChangeLog(FrappeTestCase):
 
 		released = changes(after=head, doctypes=[TRACKED])
 		self.assertEqual(len(released["changes"]), 1)
+
+	def _set_bin_tracked(self, enabled: int):
+		settings = frappe.get_single("Arc One Sync Settings")
+		row = next((r for r in settings.tracked_doctypes if r.document_type == "Bin"), None)
+		if row:
+			row.enabled = enabled
+		else:
+			settings.append("tracked_doctypes", {"document_type": "Bin", "enabled": enabled})
+		settings.save()
+		frappe.db.commit()
+
+	def test_stock_ledger_entry_records_its_bin(self):
+		bin_row = frappe.db.get_value("Bin", {}, ["name", "item_code", "warehouse"], as_dict=True)
+		if not bin_row:
+			self.skipTest("no Bin on this site")
+		entry = frappe._dict(
+			doctype="Stock Ledger Entry", item_code=bin_row.item_code, warehouse=bin_row.warehouse
+		)
+
+		self._set_bin_tracked(1)
+		self.assertEqual(_derived_targets(entry), [("Bin", bin_row.name)])
+
+		self._set_bin_tracked(0)
+		self.assertEqual(_derived_targets(entry), [], "an untracked Bin is not recorded")
 
 	def test_sync_role_gets_read_on_tracked_doctypes(self):
 		ensure_sync_access()
