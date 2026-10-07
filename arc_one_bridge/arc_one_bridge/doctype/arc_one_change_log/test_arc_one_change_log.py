@@ -5,7 +5,13 @@ import frappe
 from frappe.model.rename_doc import rename_doc
 from frappe.tests.utils import FrappeTestCase
 
-from arc_one_bridge.api.change_feed import changes
+from frappe.utils import add_days, cint, nowdate
+
+from arc_one_bridge.api.change_feed import acknowledge, changes, cursor_head
+from arc_one_bridge.arc_one_bridge.doctype.arc_one_change_log.arc_one_change_log import (
+	ArcOneChangeLog,
+	_insert_rows,
+)
 from arc_one_bridge.events.change_recorder import _derived_targets
 from arc_one_bridge.install import ensure_sync_access
 from arc_one_bridge.utils.permissions import SYNC_ROLE
@@ -174,3 +180,102 @@ class TestArcOneChangeLog(FrappeTestCase):
 			as_dict=True,
 		)
 		self.assertEqual((perm.read, perm.write, perm.create, perm.delete), (1, 0, 0, 0))
+
+	def test_idle_cursor_advances_to_head(self):
+		self._brand("idle").insert()
+		frappe.db.commit()
+
+		# Nothing for this DocType, yet the cursor moves past the Brand row: a quiet
+		# DocType must not sit on an old cursor that pruning later reads as a gap.
+		page = changes(after=0, doctypes=["DocType Nobody Tracks"])
+		self.assertEqual(page["changes"], [])
+		self.assertEqual(page["cursor"], _head())
+
+	def test_cursor_stops_at_the_page_when_more_is_waiting(self):
+		head = _head()
+		for i in range(3):
+			self._brand(f"page {i}").insert()
+			frappe.db.commit()
+
+		page = changes(after=head, limit=2, doctypes=[TRACKED])
+		self.assertTrue(page["has_more"])
+		self.assertEqual(page["cursor"], page["changes"][-1]["name"])
+
+
+class TestChangeLogRetention(FrappeTestCase):
+	"""Pruning against Arc-One's acknowledged cursor.
+
+	Every test back-dates only its own rows - hundreds of days - and prunes with
+	windows just short of that, so no real change log row on the site qualifies.
+	"""
+
+	SETTINGS = "Arc One Sync Settings"
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		cls.original = {
+			field: frappe.db.get_single_value(cls.SETTINGS, field)
+			for field in ("acknowledged_cursor", "acknowledged_at", "pruned_through")
+		}
+
+	@classmethod
+	def tearDownClass(cls):
+		frappe.db.set_single_value(cls.SETTINGS, cls.original)
+		frappe.db.commit()
+		super().tearDownClass()
+
+	def _old_rows(self, count: int, days: int) -> list:
+		"""Write `count` log rows back-dated `days` days; returns their cursors."""
+		start = _head()
+		_insert_rows([((TRACKED, f"{PREFIX} retention {i}"), "update") for i in range(count)])
+		frappe.db.sql(
+			"update `tabArc One Change Log` set creation = %s where name > %s",
+			(add_days(nowdate(), -days), start),
+		)
+		frappe.db.commit()
+		return [
+			row[0]
+			for row in frappe.db.sql("select name from `tabArc One Change Log` where name > %s order by name", start)
+		]
+
+	def _exists(self, names: list) -> list:
+		return [bool(frappe.db.exists("Arc One Change Log", name)) for name in names]
+
+	def _prune(self):
+		ArcOneChangeLog.prune(retention_days=399, max_retention_days=500)
+
+	def test_keeps_old_rows_arc_one_has_not_acknowledged(self):
+		rows = self._old_rows(3, days=400)
+		frappe.db.set_single_value(self.SETTINGS, "acknowledged_cursor", rows[0])
+
+		self._prune()
+		self.assertEqual(self._exists(rows), [False, True, True])
+
+	def test_drops_unacknowledged_rows_past_the_hard_limit_and_records_it(self):
+		rows = self._old_rows(2, days=600)
+		frappe.db.set_single_value(self.SETTINGS, "acknowledged_cursor", 0)
+
+		self._prune()
+		self.assertEqual(self._exists(rows), [False, False])
+		self.assertGreaterEqual(cint(frappe.db.get_single_value(self.SETTINGS, "pruned_through")), rows[-1])
+
+	def test_pruned_through_never_moves_back(self):
+		frappe.db.set_single_value(self.SETTINGS, "pruned_through", 10**12)
+		rows = self._old_rows(1, days=600)
+
+		self._prune()
+		self.assertEqual(self._exists(rows), [False])
+		self.assertEqual(cint(frappe.db.get_single_value(self.SETTINGS, "pruned_through")), 10**12)
+
+	def test_acknowledge_records_and_refuses_a_cursor_beyond_the_head(self):
+		head = _head()
+		self.assertEqual(acknowledge(head)["acknowledged_cursor"], head)
+		self.assertEqual(cint(frappe.db.get_single_value(self.SETTINGS, "acknowledged_cursor")), head)
+
+		with self.assertRaises(frappe.ValidationError):
+			acknowledge(head + 1)
+
+	def test_cursor_head_reports_pruned_through(self):
+		frappe.db.set_single_value(self.SETTINGS, "pruned_through", 42)
+		self.assertEqual(cursor_head()["pruned_through"], 42)

@@ -3,9 +3,11 @@
 
 import frappe
 from frappe.model.document import Document
-from frappe.utils import add_days, now, nowdate
+from frappe.query_builder.functions import Max
+from frappe.utils import add_days, cint, now, nowdate
 
 DEFAULT_RETENTION_DAYS = 30
+DEFAULT_MAX_RETENTION_DAYS = 90
 
 CHANGE_LOG_TABLE = "tabArc One Change Log"
 CHANGE_LOG_SEQUENCE = "arc_one_change_log_id_seq"
@@ -41,21 +43,39 @@ class ArcOneChangeLog(Document):
 		_pending_changes().add(ref_doctype, ref_name, event)
 
 	@staticmethod
-	def prune(retention_days: int | None = None) -> None:
-		"""Remove rows older than the retention window.
+	def prune(retention_days: int | None = None, max_retention_days: int | None = None) -> None:
+		"""Remove rows Arc-One no longer needs.
 
-		Retention must comfortably exceed the longest expected consumer outage: a
-		consumer whose cursor falls off the end of the log cannot catch up
-		incrementally and has to be re-seeded with a full sync.
+		A row goes once it is older than `retention_days` AND at or below the cursor
+		Arc-One acknowledged. Deleting by age alone dropped rows a stalled consumer
+		had not read yet - it could never get them back, and could not tell.
+
+		Past `max_retention_days` a row goes regardless, so a consumer that is gone
+		for good cannot grow the log forever. `pruned_through` records the highest
+		row ever deleted: a consumer whose cursor is below it knows rows were lost
+		before it read them and re-syncs instead of carrying on with a silent gap.
 		"""
+		settings = "Arc One Sync Settings"
 		if retention_days is None:
-			retention_days = (
-				frappe.db.get_single_value("Arc One Sync Settings", "retention_days")
-				or DEFAULT_RETENTION_DAYS
+			retention_days = frappe.db.get_single_value(settings, "retention_days") or DEFAULT_RETENTION_DAYS
+		if max_retention_days is None:
+			max_retention_days = (
+				frappe.db.get_single_value(settings, "max_retention_days") or DEFAULT_MAX_RETENTION_DAYS
 			)
+		acknowledged = cint(frappe.db.get_single_value(settings, "acknowledged_cursor"))
 
+		log = frappe.qb.DocType("Arc One Change Log")
 		cutoff = add_days(nowdate(), -int(retention_days))
-		frappe.db.delete("Arc One Change Log", {"creation": ("<", cutoff)})
+		hard_cutoff = add_days(nowdate(), -max(int(max_retention_days), int(retention_days)))
+		prunable = ((log.creation < cutoff) & (log.name <= acknowledged)) | (log.creation < hard_cutoff)
+
+		highest = frappe.qb.from_(log).select(Max(log.name)).where(prunable).run()[0][0]
+		if not highest:
+			return
+
+		frappe.qb.from_(log).delete().where(prunable).run()
+		if cint(highest) > cint(frappe.db.get_single_value(settings, "pruned_through")):
+			frappe.db.set_single_value(settings, "pruned_through", cint(highest))
 		frappe.db.commit()
 
 

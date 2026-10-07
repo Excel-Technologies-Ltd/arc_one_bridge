@@ -8,7 +8,12 @@
  "field_order": [
   "enabled",
   "retention_days",
+  "max_retention_days",
   "settle_seconds",
+  "section_consumer",
+  "acknowledged_cursor",
+  "acknowledged_at",
+  "pruned_through",
   "section_tracked",
   "tracked_doctypes"
  ],
@@ -22,10 +27,18 @@
   },
   {
    "default": "30",
-   "description": "Delete change log rows older than this. Keep comfortably longer than the longest expected consumer outage - a consumer offline for longer must be re-seeded with a full sync.",
+   "description": "Delete change log rows older than this, once Arc-One has acknowledged reading them. Unacknowledged rows are kept until the hard limit below.",
    "fieldname": "retention_days",
    "fieldtype": "Int",
    "label": "Change Log Retention (days)"
+  },
+  {
+   "default": "90",
+   "description": "Delete rows older than this even if Arc-One never acknowledged them, so a consumer that is gone for good cannot grow the log forever. Arc-One detects rows lost this way and re-syncs.",
+   "fieldname": "max_retention_days",
+   "fieldtype": "Int",
+   "label": "Hard Retention Limit (days)",
+   "non_negative": 1
   },
   {
    "default": "5",
@@ -34,6 +47,31 @@
    "fieldtype": "Int",
    "label": "Settle Window (seconds)",
    "non_negative": 1
+  },
+  {
+   "fieldname": "section_consumer",
+   "fieldtype": "Section Break",
+   "label": "Arc-One Progress"
+  },
+  {
+   "description": "The lowest cursor Arc-One still needs, reported by synced-worker. Rows at or below it may be pruned.",
+   "fieldname": "acknowledged_cursor",
+   "fieldtype": "Int",
+   "label": "Acknowledged Cursor",
+   "read_only": 1
+  },
+  {
+   "fieldname": "acknowledged_at",
+   "fieldtype": "Datetime",
+   "label": "Acknowledged At",
+   "read_only": 1
+  },
+  {
+   "description": "The highest cursor ever pruned. A consumer whose cursor is below it missed rows and must re-sync.",
+   "fieldname": "pruned_through",
+   "fieldtype": "Int",
+   "label": "Pruned Through",
+   "read_only": 1
   },
   {
    "fieldname": "section_tracked",
@@ -51,7 +89,7 @@
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-17 00:00:00.000000",
+ "modified": "2026-10-07 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Arc One Bridge",
  "name": "Arc One Sync Settings",

@@ -79,21 +79,59 @@ def changes(after=0, limit=DEFAULT_LIMIT, doctypes=None) -> dict:
 		order_by="name asc",
 		limit=limit,
 	)
+	has_more = len(rows) == limit
+
+	cursor = rows[-1]["name"] if rows else after
+	if not has_more:
+		# Nothing more for these DocTypes up to the settled head, so the cursor can
+		# move to it. Otherwise a DocType that rarely changes keeps its cursor on its
+		# last change for months: it reads as far behind, and once that row is pruned
+		# it would look like it missed rows - every quiet DocType forced into a
+		# needless full re-sync.
+		log = frappe.qb.DocType(CHANGE_LOG)
+		head = frappe.qb.from_(log).select(Max(log.name))
+		if settle:
+			head = head.where(log.creation < filters["creation"][1])
+		cursor = max(cint(cursor), cint(head.run()[0][0]))
 
 	return {
-		"cursor": rows[-1]["name"] if rows else after,
-		"has_more": len(rows) == limit,
+		"cursor": cursor,
+		"has_more": has_more,
 		"changes": rows,
 	}
 
 
+@frappe.whitelist(methods=["POST"])
+def acknowledge(cursor) -> dict:
+	"""Record the lowest cursor the consumer still needs; rows at or below it may be pruned.
+
+	Arc-One sends the minimum over all of its DocType cursors for this site. A
+	cursor beyond the head is refused: accepting it would let pruning delete rows
+	nobody has read.
+	"""
+	require_sync_role()
+
+	cursor = cint(cursor)
+	log = frappe.qb.DocType(CHANGE_LOG)
+	head = cint(frappe.qb.from_(log).select(Max(log.name)).run()[0][0])
+	if cursor < 0 or cursor > head:
+		frappe.throw(frappe._("Cursor {0} is outside the change log (head {1})").format(cursor, head))
+
+	# Written directly: saving the Single would run its on_update, which re-applies
+	# sync permissions - work an acknowledgement every minute must not trigger.
+	frappe.db.set_single_value(
+		"Arc One Sync Settings", {"acknowledged_cursor": cursor, "acknowledged_at": now_datetime()}
+	)
+	return {"acknowledged_cursor": cursor}
+
+
 @frappe.whitelist()
 def cursor_head() -> dict:
-	"""Newest cursor and how many rows are retained.
+	"""Newest cursor, how many rows are retained, and how far pruning has reached.
 
-	Lets a consumer report its own lag without walking the feed, and reveals when
-	retention has passed a stalled consumer by - at which point it needs a full
-	re-sync rather than an incremental catch-up.
+	Lets a consumer report its own lag without walking the feed. `pruned_through`
+	is what reveals when retention has passed a stalled consumer by: a cursor below
+	it missed rows, and needs a full re-sync rather than an incremental catch-up.
 	"""
 	require_sync_role()
 
@@ -105,4 +143,5 @@ def cursor_head() -> dict:
 	return {
 		"head": result.get("head") or 0,
 		"rows_kept": result.get("rows_kept") or 0,
+		"pruned_through": cint(frappe.db.get_single_value("Arc One Sync Settings", "pruned_through")),
 	}
