@@ -229,6 +229,7 @@ doc_events = {
 		"on_update": "arc_one_bridge.events.change_recorder.on_update",
 		"on_submit": "arc_one_bridge.events.change_recorder.on_submit",
 		"on_cancel": "arc_one_bridge.events.change_recorder.on_cancel",
+		"on_change": "arc_one_bridge.events.change_recorder.on_change",
 		"on_trash": "arc_one_bridge.events.change_recorder.on_trash",
 		"after_rename": "arc_one_bridge.events.change_recorder.on_rename",
 	}
@@ -238,7 +239,10 @@ after_install = "arc_one_bridge.install.after_install"
 after_migrate = "arc_one_bridge.install.after_migrate"
 
 scheduler_events = {
+	"hourly": [
+		"arc_one_bridge.tasks.invoice_status.record_overdue_invoices",
+	],
 	"daily": [
 		"arc_one_bridge.arc_one_bridge.doctype.arc_one_change_log.arc_one_change_log.prune_change_log",
-	]
+	],
 }

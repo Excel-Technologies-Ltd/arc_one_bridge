@@ -84,6 +84,28 @@ class TestArcOneChangeLog(FrappeTestCase):
 		rows = _log_rows(head)
 		self.assertEqual([(r.ref_name, r.event) for r in rows], [(doc.name, "update")])
 
+	def test_db_set_is_recorded(self):
+		# How ERPNext moves an invoice to Paid: db_set fires on_change, not on_update.
+		doc = self._brand("db set").insert()
+		frappe.db.commit()
+		head = _head()
+
+		doc.db_set("description", "set directly")
+		frappe.db.commit()
+
+		self.assertEqual([(r.ref_name, r.event) for r in _log_rows(head)], [(doc.name, "update")])
+
+	def test_on_change_keeps_the_event_already_staged(self):
+		doc = self._brand("staged event").insert()
+		frappe.db.commit()
+		head = _head()
+
+		ArcOneChangeLog.record(TRACKED, doc.name, "submit")
+		ArcOneChangeLog.record(TRACKED, doc.name, "update", replace=False)
+		frappe.db.commit()
+
+		self.assertEqual([(r.ref_name, r.event) for r in _log_rows(head)], [(doc.name, "submit")])
+
 	def test_rollback_records_nothing(self):
 		head = _head()
 		self._brand("rolled back").insert()

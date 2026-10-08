@@ -66,11 +66,11 @@ def _derived_targets(doc) -> list:
 	return []
 
 
-def _record(doc, event: str) -> None:
+def _record(doc, event: str, replace: bool = True) -> None:
 	try:
 		doctype, name = _resolve_target(doc)
 		if doctype and name and is_tracked(doctype):
-			ArcOneChangeLog.record(doctype, str(name), event)
+			ArcOneChangeLog.record(doctype, str(name), event, replace)
 
 		for target_doctype, target_name in _derived_targets(doc):
 			ArcOneChangeLog.record(target_doctype, str(target_name), "update")
@@ -97,6 +97,13 @@ def on_submit(doc, method=None):
 
 def on_cancel(doc, method=None):
 	_record(doc, "cancel")
+
+
+def on_change(doc, method=None):
+	# `db_set` - how ERPNext moves an invoice to Paid or Partly Paid when a payment
+	# lands - fires on_change but not on_update. Every save and submit fires it too,
+	# after their own event, so it only fills in when nothing else was recorded.
+	_record(doc, "update", replace=False)
 
 
 def on_trash(doc, method=None):

@@ -34,13 +34,17 @@ class ArcOneChangeLog(Document):
 	"""
 
 	@classmethod
-	def record(cls, ref_doctype: str, ref_name: str, event: str) -> None:
+	def record(cls, ref_doctype: str, ref_name: str, event: str, replace: bool = True) -> None:
 		"""Stage one change for the open transaction.
 
-		The single place a log row is created, so callers - today the `doc_events`
-		handlers, tomorrow anything else - cannot diverge on how rows are shaped.
+		The single place a log row is created, so callers - the `doc_events`
+		handlers and the scheduled tasks - cannot diverge on how rows are shaped.
+
+		`replace=False` leaves an event already staged for the document alone: a
+		catch-all signal (`on_change` follows every save and submit) must not turn a
+		recorded "submit" into "update".
 		"""
-		_pending_changes().add(ref_doctype, ref_name, event)
+		_pending_changes().add(ref_doctype, ref_name, event, replace)
 
 	@staticmethod
 	def prune(retention_days: int | None = None, max_retention_days: int | None = None) -> None:
@@ -90,13 +94,16 @@ class PendingChanges:
 	def __init__(self):
 		self.rows: dict[tuple[str, str], str] = {}
 
-	def add(self, ref_doctype: str, ref_name: str, event: str) -> None:
+	def add(self, ref_doctype: str, ref_name: str, event: str, replace: bool = True) -> None:
+		key = (ref_doctype, ref_name)
+		if not replace and key in self.rows:
+			return
+
 		if not self.rows:
 			# Rollback observers are reset by every commit and rollback, so register
 			# again for each transaction that records something.
 			frappe.local.rollback_observers.append(self)
 
-		key = (ref_doctype, ref_name)
 		self.rows.pop(key, None)
 		self.rows[key] = event
 
