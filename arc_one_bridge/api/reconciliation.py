@@ -10,7 +10,8 @@ the common case for the cost of one aggregate query per DocType.
 """
 
 import frappe
-from frappe.query_builder.functions import Count, Max
+from frappe.query_builder import CustomFunction
+from frappe.query_builder.functions import Count, Max, Min, Sum
 
 from arc_one_bridge.arc_one_bridge.doctype.arc_one_sync_settings.arc_one_sync_settings import (
 	is_tracked,
@@ -46,4 +47,53 @@ def reconcile(doctype: str) -> dict:
 		"doctype": doctype,
 		"count": result.get("count") or 0,
 		"max_modified": result.get("max_modified"),
+	}
+
+
+INVOICE_DOCTYPE = "Sales Invoice"
+DateFormat = CustomFunction("DATE_FORMAT", ["date", "format"])
+
+
+@frappe.whitelist()
+def invoice_summary(from_date: str, to_date: str) -> dict:
+	"""Sales Invoice count and total per posting month and status, between two dates inclusive.
+
+	Lets the replica be compared month by month, so a difference points at the
+	month to re-read instead of all of the table. Bounded by date because a whole
+	table of millions in one grouped query outlasts the caller's timeout; the
+	oldest posting date says how far back the caller has to go.
+	"""
+	require_sync_role()
+	if not is_tracked(INVOICE_DOCTYPE):
+		frappe.throw(
+			frappe._("{0} is not replicated to Arc-One").format(INVOICE_DOCTYPE), frappe.PermissionError
+		)
+
+	invoice = frappe.qb.DocType(INVOICE_DOCTYPE)
+	month = DateFormat(invoice.posting_date, "%Y-%m")
+	rows = (
+		frappe.qb.from_(invoice)
+		.select(
+			month.as_("month"),
+			invoice.status,
+			Count("*").as_("count"),
+			Sum(invoice.total).as_("total"),
+		)
+		.where(invoice.posting_date.between(from_date, to_date))
+		.groupby(month, invoice.status)
+	).run(as_dict=True)
+
+	first_date = frappe.qb.from_(invoice).select(Min(invoice.posting_date)).run()[0][0]
+
+	return {
+		"first_date": str(first_date) if first_date else None,
+		"months": [
+			{
+				"month": row.month,
+				"status": row.status,
+				"count": row["count"],
+				"total": float(row.total or 0),
+			}
+			for row in rows
+		],
 	}
