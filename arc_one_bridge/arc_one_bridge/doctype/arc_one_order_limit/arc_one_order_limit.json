@@ -1,0 +1,86 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:order",
+ "creation": "2026-10-12 00:00:00.000000",
+ "description": "One row per Arc-One order whose approval lowered a customer's limits. Makes applying an order's limits idempotent: a retry finds its row and changes nothing.",
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "field_order": [
+  "order",
+  "customer",
+  "total",
+  "other_brands_amount",
+  "brand_amounts",
+  "changes"
+ ],
+ "fields": [
+  {
+   "fieldname": "order",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Arc-One Order",
+   "read_only": 1,
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Customer",
+   "options": "Customer",
+   "read_only": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "total",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Order Total",
+   "read_only": 1
+  },
+  {
+   "fieldname": "other_brands_amount",
+   "fieldtype": "Currency",
+   "label": "Other Brands Amount",
+   "read_only": 1
+  },
+  {
+   "fieldname": "brand_amounts",
+   "fieldtype": "JSON",
+   "label": "Brand Amounts",
+   "read_only": 1
+  },
+  {
+   "description": "Each changed limit, before and after.",
+   "fieldname": "changes",
+   "fieldtype": "JSON",
+   "label": "Changes",
+   "read_only": 1
+  }
+ ],
+ "in_create": 1,
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-12 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Arc One Bridge",
+ "name": "Arc One Order Limit",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "read": 1,
+   "report": 1,
+   "role": "System Manager"
+  }
+ ],
+ "quick_entry": 0,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0
+}
