@@ -2,3 +2,4 @@
 
 [post_model_sync]
 arc_one_bridge.patches.set_default_settle_seconds
+arc_one_bridge.patches.delete_sales_webhooks
