@@ -1,13 +1,23 @@
 # Copyright (c) 2026, Excel Technologies Limited and contributors
 # For license information, please see license.txt
 
-"""Delete the webhooks that pushed Sales changes to Arc-One.
+"""Delete the webhooks that pushed Sales changes to this site's Arc-One API.
 
 Arc-One now reads every Sales DocType from the change feed, and the endpoints these
 webhooks called no longer exist; left in place they only fill the Webhook Request
-Log with failures. HRM's webhooks are kept, including its User Permission ones,
-which call the same endpoint as the Sales ones but are marked `x-module: hr`.
+Log with failures.
+
+Webhooks are matched by the host they call as well as the path, because other
+Arc-One deployments (and other applications) can register webhooks with the same
+paths on the same ERPNext site. Only webhooks that call this site's Arc-One API are
+deleted. HRM's webhooks (`x-module: hr`) are always kept, including their User
+Permission ones, which use the same path as the Sales ones.
+
+The Arc-One API host comes from `arc_one_api_base_url` in site_config.json. If it is
+not set, nothing is deleted.
 """
+
+from urllib.parse import urlparse
 
 import frappe
 
@@ -25,21 +35,38 @@ SALES_PATHS = (
 	"/api/v1/zones-webhook/",
 )
 USER_PERMISSION_PATH = "/api/v1/user-permission-webhooks/"
+API_BASE_URL_KEY = "arc_one_api_base_url"
 
 
 def execute():
-	for name in sales_webhooks():
+	host = api_host()
+	if not host:
+		print(f"delete_sales_webhooks skipped: set {API_BASE_URL_KEY} in site_config.json")
+		return
+
+	for name in sales_webhooks(host):
 		frappe.delete_doc("Webhook", name, ignore_permissions=True)
 
 
-def sales_webhooks() -> list[str]:
+def api_host() -> str:
+	base_url = frappe.conf.get(API_BASE_URL_KEY) or ""
+	return urlparse(base_url).netloc
+
+
+def sales_webhooks(host: str) -> list[str]:
 	hrm = set(hrm_webhooks())
 	return [
 		webhook.name
 		for webhook in frappe.get_all("Webhook", fields=["name", "request_url"])
-		if any(path in (webhook.request_url or "") for path in SALES_PATHS)
-		or (USER_PERMISSION_PATH in (webhook.request_url or "") and webhook.name not in hrm)
+		if webhook.name not in hrm and is_sales_webhook(webhook.request_url, host)
 	]
+
+
+def is_sales_webhook(request_url, host: str) -> bool:
+	url = urlparse(request_url or "")
+	if url.netloc != host:
+		return False
+	return url.path.startswith(SALES_PATHS) or url.path.startswith(USER_PERMISSION_PATH)
 
 
 def hrm_webhooks() -> list[str]:
