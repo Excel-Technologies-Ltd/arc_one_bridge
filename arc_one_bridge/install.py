@@ -35,13 +35,14 @@ def ensure_iou_key_fields() -> None:
 	"""
 	from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
-	create_custom_fields(
-		{
-			"Employee Advance": [IOU_KEY_FIELD],
-			"IoU Project": [IOU_KEY_FIELD],
-		},
-		ignore_validate=True,
-	)
+	# Only the sites that have the DocType get the field: an HRM site has no IoU Project.
+	fields = {
+		doctype: [IOU_KEY_FIELD]
+		for doctype in ("Employee Advance", "IoU Project")
+		if frappe.db.exists("DocType", doctype)
+	}
+	if fields:
+		create_custom_fields(fields, ignore_validate=True)
 
 
 def ensure_sync_access() -> None:
