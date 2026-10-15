@@ -3,3 +3,10 @@
 [post_model_sync]
 arc_one_bridge.patches.set_default_settle_seconds
 arc_one_bridge.patches.delete_sales_webhooks
+arc_one_bridge.patches.disable_hrm_webhooks
+# Step two of the HRM webhook retirement, to uncomment once disable_hrm_webhooks
+# has been in place for 14 days on every site. It refuses to delete before then,
+# and a patch that returns is logged as run, so one uncommented early never
+# deletes anything: give it a fresh name to run it again, as Frappe's own
+# patches.txt does, e.g. "...delete_hrm_webhooks #2026-11-01".
+# arc_one_bridge.patches.delete_hrm_webhooks

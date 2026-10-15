@@ -84,9 +84,12 @@ class TestHrmWebhooks(FrappeTestCase):
 		for webhook in self.hrm:
 			self.assertEqual(enabled(webhook), 1, webhook.request_url)
 
-	def test_refuses_without_the_api_address(self):
+	def test_skips_without_the_api_address(self):
+		# Said, not raised: these run as patches, and a patch must not stop a migrate.
 		with patch.dict(frappe.conf, {"arc_one_api_base_url": ""}):
-			self.assertRaises(frappe.ValidationError, hrm_webhooks.disable)
+			result = hrm_webhooks.disable()
 
+		self.assertIn("arc_one_api_base_url", result["skipped"])
+		self.assertEqual(result["webhooks"], [])
 		for webhook in self.hrm:
 			self.assertEqual(enabled(webhook), 1, webhook.request_url)
